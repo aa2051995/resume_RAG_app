@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Multi-File Processing App</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        #progressContainer {
+            margin-top: 10px;
+        }
+        .progressBar {
+            width: 100%;
+            background-color: #ddd;
+            margin-bottom: 5px;
+        }
+        .progressBar div {
+            width: 0%;
+            height: 20px;
+            background-color: #4CAF50;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+        }
+        #chat {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Multi-File Processing App</h1>
+
+    <!-- Multiple File Upload Form -->
+    <form id="uploadForm" enctype="multipart/form-data">
+        <input type="file" name="files" id="files" accept=".pdf,.doc,.docx" multiple required>
+        <input type="submit" value="Upload">
+    </form>
+    <br>
+
+    <!-- Process Button (disabled until upload complete) -->
+    <button id="processBtn" disabled>Process</button>
+    <div id="progressContainer" style="display:none;"></div>
+    <br>
+
+    <!-- Ask Section: Textbox and Button (disabled until processing done) -->
+    <input type="text" id="queryInput" placeholder="Enter your query" disabled>
+    <button id="askBtn" disabled>Ask</button>
+    <div id="chat"></div>
+
+    <script>
+        $(document).ready(function(){
+            // Upload files
+            $("#uploadForm").on("submit", function(e){
+                e.preventDefault();
+                var formData = new FormData();
+                var files = $("#files")[0].files;
+                for (var i = 0; i < files.length; i++) {
+                    formData.append("files", files[i]);
+                }
+                $.ajax({
+                    url: "/upload",
+                    type: "POST",
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response){
+                        alert(response.message);
+                        $("#processBtn").prop("disabled", false);
+                    },
+                    error: function(){
+                        alert("Error uploading files");
+                    }
+                });
+            });
+
+            // Start processing when Process button is clicked
+            $("#processBtn").on("click", function(){
+                $.ajax({
+                    url: "/process",
+                    type: "POST",
+                    success: function(response){
+                        alert(response.message);
+                        $("#progressContainer").show();
+                        // Poll progress every second
+                        var interval = setInterval(function(){
+                            $.ajax({
+                                url: "/progress",
+                                type: "GET",
+                                success: function(progressList){
+                                    $("#progressContainer").empty();
+                                    var allDone = true;
+                                    progressList.forEach(function(item){
+                                        var bar = $("<div class='progressBar'><div>" + item.filename + ": " + item.progress + "%</div></div>");
+                                        bar.find("div").css("width", item.progress + "%");
+                                        $("#progressContainer").append(bar);
+                                        if (!item.done) {
+                                            allDone = false;
+                                        }
+                                    });
+                                    if(allDone && progressList.length > 0){
+                                        clearInterval(interval);
+                                        alert("Processing complete for all files!");
+                                        $("#queryInput").prop("disabled", false);
+                                        $("#askBtn").prop("disabled", false);
+                                    }
+                                }
+                            });
+                        }, 1000);
+                    },
+                    error: function(){
+                        alert("Error starting processing");
+                    }
+                });
+            });
+
+            // Handle Ask button click
+            $("#askBtn").on("click", function(){
+                var query = $("#queryInput").val();
+                $.ajax({
+                    url: "/ask",
+                    type: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({query: query}),
+                    success: function(response){
+                        // Append the answer to the chat section like ChatGPT's conversation view
+                        //$("#chat").append("<p>" + response.response + "</p>");
+                        $("#chat").html("<p>" + response.response + "</p>");
+                    },
+                    error: function(){
+                        alert("Error processing query");
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
