@@ -11,6 +11,9 @@ from cv_ocr import process_cv
 import ollama
 import chromadb
 import uuid
+from ollama import chat
+from ollama import ChatResponse
+
 app = Flask(__name__)
 app.secret_key = "your-secret-key"
 UPLOAD_FOLDER = "uploads"
@@ -23,11 +26,11 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 progress_status = {}
 client = chromadb.Client()
 collection = client.get_or_create_collection(name="cvs")
-def create_cv_record(candidate):
+def create_cv_record(candidate,filename):
     
-    t = ""
-    for k,val in candidate.items():
-        t += " "+val
+    # t = ""
+    # for k,val in candidate.items():
+    #     t += f"{k}: "+val
     # t = (
     #        f"Name: {candidate['Name']}\n"
     #        f"Education: {candidate['Education']}\n"
@@ -36,14 +39,83 @@ def create_cv_record(candidate):
     #        f"Certifications: {candidate['Certifications']}\n"
     #        f"Additional Info: {candidate['Additional_Info']}\n"
     #    )
-    response = ollama.embed(model="mxbai-embed-large", input=t)
+    response = ollama.embed(model="mxbai-embed-large", input=candidate)
     embeddings1 = response["embeddings"]
     # print(embeddings)
     collection.add(
         ids=[str(uuid.uuid4())],
         embeddings=embeddings1,
-        documents=[t]
+        documents=[candidate],
+        metadatas={"filename": filename},
     )
+def llm_format_cv(cv_text_dic):
+    # Aggregate the CV text from the dictionary
+    text = ""
+    for k, val in cv_text_dic.items():
+        text += " " + val
+
+    # Refined prompt that integrates the CV text
+    prompt = f"""
+    You are an expert HR analyst. Below is a CV text extracted from a candidate’s resume.
+
+    Extract and structure the information in JSON format using the following keys:
+    - "Personal Information"
+    - "Education"
+    - "Work_Experience"
+    - "Projects"
+    - "Skills"
+    - "Certifications"
+
+    For any key that is not present in the CV, please return an empty string as its value. 
+    If there are additional relevant sections not covered by the above keys, add them with an appropriate title.
+
+    CV Text:
+    {text}
+
+    Return only the JSON output.
+    """
+
+    response: ChatResponse = chat(
+        model='llama3.1',
+        messages=[{'role': 'user', 'content': prompt}],
+    )
+    print(response.message.content)
+    # print(response['message']['content'])
+    # or access fields directly from the response object
+    return response.message.content
+def llm_sumarize_cv(query,documents):
+    retrieved_documents_and_metadata =  documents
+    user_query = query
+    prompt = f"""
+    You are an expert HR analyst with access to a collection of candidate profiles and their metadata. Each candidate profile includes information such as skills, education, work experience, certifications, and the name of the file (which corresponds to the candidate’s CV). The file name should be mentioned in your answer to help easily locate the candidate CV.
+
+    The retrieved candidate information is as follows:
+    {retrieved_documents_and_metadata}
+
+    User Query: "{user_query}"
+
+    Based on the candidate profiles and metadata provided, please answer the query in a clear and structured JSON format. Consider the following:
+    - If the query is about finding candidates with specific skills, list the candidates who possess those skills along with details (e.g., years of experience, proficiency) and include the file name.
+    - If the query is about comparing education levels, provide a side-by-side comparison of the candidates’ education credentials, including the file names.
+    - If the query is about searching for experience in specific industries, identify and list the candidates with relevant industry experience along with key details and their file names.
+    - If the query is about identifying matching candidates for job requirements, summarize which candidates best match the provided job requirements, explain why, and include the associated file names.
+
+    Return only the final answer in string response format not json.
+    """
+
+    from ollama import chat
+    from ollama import ChatResponse
+
+    response: ChatResponse = chat(model='llama3.1', messages=[
+    {
+        'role': 'user',
+        'content': prompt,
+    },
+    ])
+    # print(response['message']['content'])
+    # or access fields directly from the response object
+    return response.message.content
+
 def retrieve(prompt):
     # prompt = "who know how to program in c++?"
     #collection = client.get_collection('cvs')
@@ -56,15 +128,19 @@ def retrieve(prompt):
     query_embeddings=response["embeddings"],
     n_results=3
     )
-    data = results['documents']
-    return data
+    # data = data['metadatas']+ results['documents'] 
+    return results
 def process_file(filepath):
     """Simulated processing function for a single file."""
     global progress_status
     progress_status[filepath] = {"progress": 0, "done": False, "result": ""}
     print("cccccccccccccccccccc",filepath)
+
+    import os
     cv_text_dic  = process_cv(filepath)
-    create_cv_record(cv_text_dic)
+    candidate = llm_format_cv(cv_text_dic)
+    create_cv_record(candidate,os.path.basename(filepath))
+
     total_steps = 10  # Simulate processing in 10 steps
     for i in range(total_steps):
         time.sleep(1)  # Simulate work (replace with real processing)
@@ -76,9 +152,10 @@ def process_file(filepath):
 def process_ask(query, aggregated_results):
     """Simulated processing function for handling an 'ask' query.
        You can enhance this to use an LLM or other processing logic."""
-    res = retrieve(query)
+    docs = retrieve(query)
+    res = llm_sumarize_cv(query,docs)
     # For example, simply return a response combining the query and aggregated results.
-    return f"Query: {res}"
+    return f"answer: {res}"
 
 @app.route("/")
 def index():
