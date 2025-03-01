@@ -1,5 +1,5 @@
 # resume_RAG_app
-<<<<<<< HEAD
+
 parse resumes using ocr and store the results in chroma vector store, enable querying on resumes  and matching candidates to job description
 dependencies: 
 -  Paddleocr will extract info from pdf files.
