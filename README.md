@@ -7,9 +7,9 @@ dependencies:
 - chroma db to store and retrieve documents and their embeddings
 - flask for creating the chat interface and file upload
 User interface:
- - simple user interface where you upload files click upload
- - Click process so it extracts info using OCR and stores files data and info
- - Then you can write queries about the CV, and llm will summarize the answer
+- simple user interface where you upload files click upload
+- Click process so it extracts info using OCR and stores files data and info
+- Then you can write queries about the CV, and llm will summarize the answer
 installation:
 - Download and install ollama https://github.com/ollama/ollama
 - ollama pull llama3.1
